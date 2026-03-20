@@ -1,0 +1,13 @@
+groq
+langchain_groq
+langgraph
+langchain-core
+langsmith
+
+PyPDF2
+requests
+
+python-dotenv
+typing-extensions
+
+streamlit
