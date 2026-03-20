@@ -20,11 +20,12 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 MAX_RETRIES = 2
 
 
-# ── State 
+# ── State ──────────────────────────────────────
 def merge_lists(a, b):
     return (a or []) + (b or [])
 
 class ResearchState(TypedDict):
+    api_key:        str
     paper_text:     str
     analysis:       dict
     summary:        dict
@@ -35,7 +36,7 @@ class ResearchState(TypedDict):
     research_brief: dict
 
 
-# ── Nodes 
+# ── Nodes ──────────────────────────────────────
 def node_paper_analyzer(state):
     return paper_analyzer_agent(state)
 
@@ -109,7 +110,7 @@ def node_combiner(state):
     return {"research_brief": brief}
 
 
-# ── Retry helpers 
+# ── Retry helpers ──────────────────────────────
 def _get_latest_review(state, task_type):
     reviews = [r for r in state.get("review_scores", []) if r.get("task_type") == task_type]
     return reviews[-1] if reviews else None
@@ -123,7 +124,7 @@ def _bump_retry(state, task):
     return {"retry_counts": counts}
 
 
-# ── Routing functions 
+# ── Routing functions ──────────────────────────
 def route_analysis(state):
     review = _get_latest_review(state, "analysis")
     if (review and review.get("passed")) or _get_retry_count(state, "analysis") >= MAX_RETRIES:
@@ -149,7 +150,7 @@ def route_insights(state):
     return "retry_insights"
 
 
-# ── Retry nodes 
+# ── Retry nodes ────────────────────────────────
 def node_retry_analysis(state):
     return {**paper_analyzer_agent(state), **_bump_retry(state, "analysis")}
 
@@ -163,7 +164,7 @@ def node_retry_insights(state):
     return {**key_insights_agent(state), **_bump_retry(state, "insights")}
 
 
-# ── Build graph 
+# ── Build graph ────────────────────────────────
 def build_graph():
     g = StateGraph(ResearchState)
 
@@ -212,11 +213,12 @@ def build_graph():
     return g.compile()
 
 
-# ── Run function 
+# ── Run function ───────────────────────────────
 @traceable(name="research-paper-analyzer")
-def run_analysis(paper_text: str) -> dict:
+def run_analysis(paper_text: str, api_key: str) -> dict:
     app = build_graph()
     return app.invoke({
+        "api_key":        api_key,
         "paper_text":     paper_text,
         "analysis":       {},
         "summary":        {},

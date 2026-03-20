@@ -1,27 +1,17 @@
-"""
-agents.py
----------
-All agents in one file. Each agent uses LangChain's chain pattern.
-"""
-
-import os
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from dotenv import load_dotenv
 
-load_dotenv()
+parser = JsonOutputParser()
 
-# ── LLM setup ─────────────────────────────────
-# Created lazily at call time so the key can come from .env OR user input
-def get_llm():
+
+def get_llm(api_key: str):
+    """Create LLM using the key passed in — never reads os.environ."""
     return ChatGroq(
         model="llama-3.3-70b-versatile",
         temperature=0.3,
-        api_key=os.environ["GROQ_API_KEY"],
+        api_key=api_key,
     )
-
-parser = JsonOutputParser()
 
 
 # ── Agent 1: Paper Analyzer ───────────────────
@@ -36,7 +26,9 @@ Paper: {paper_text}""")
 ])
 
 def paper_analyzer_agent(state):
-    result = (analyzer_prompt | get_llm() | parser).invoke({"paper_text": state["paper_text"][:40_000]})
+    result = (analyzer_prompt | get_llm(state["api_key"]) | parser).invoke({
+        "paper_text": state["paper_text"][:40_000]
+    })
     return {"analysis": result}
 
 
@@ -50,7 +42,9 @@ Analysis: {analysis}""")
 ])
 
 def summary_generator_agent(state):
-    result = (summary_prompt | get_llm() | parser).invoke({"analysis": state["analysis"]})
+    result = (summary_prompt | get_llm(state["api_key"]) | parser).invoke({
+        "analysis": state["analysis"]
+    })
     return {"summary": result}
 
 
@@ -67,7 +61,9 @@ Paper: {paper_text}""")
 ])
 
 def citation_extractor_agent(state):
-    result = (citation_prompt | get_llm() | parser).invoke({"paper_text": state["paper_text"][:40_000]})
+    result = (citation_prompt | get_llm(state["api_key"]) | parser).invoke({
+        "paper_text": state["paper_text"][:40_000]
+    })
     return {"citations": result}
 
 
@@ -88,7 +84,7 @@ Summary: {summary}""")
 ])
 
 def key_insights_agent(state):
-    result = (insights_prompt | get_llm() | parser).invoke({
+    result = (insights_prompt | get_llm(state["api_key"]) | parser).invoke({
         "analysis": state["analysis"],
         "summary":  state["summary"],
     })
@@ -118,10 +114,46 @@ def review_agent(state, task_type):
         "citations": state.get("citations", {}),
         "insights":  state.get("insights",  {}),
     }
-    review = (review_prompt | get_llm() | parser).invoke({
+    review = (review_prompt | get_llm(state["api_key"]) | parser).invoke({
         "task_type":     task_type,
         "content":       content_map.get(task_type, {}),
         "paper_excerpt": state["paper_text"][:2000],
     })
     review["task_type"] = task_type
     return {"review_scores": state.get("review_scores", []) + [review]}
+
+
+# ── Standalone test ───────────────────────────
+if __name__ == "__main__":
+    import sys, json, os, PyPDF2
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    pdf_path = sys.argv[1] if len(sys.argv) > 1 else input("PDF path: ").strip()
+    api_key  = os.environ.get("GROQ_API_KEY") or input("Groq API key: ").strip()
+
+    pages = []
+    with open(pdf_path, "rb") as f:
+        for page in PyPDF2.PdfReader(f).pages:
+            if page.extract_text():
+                pages.append(page.extract_text())
+    paper_text = "\n\n".join(pages)
+
+    print(f"\nLoaded {len(paper_text):,} chars. Running all agents...\n")
+
+    state = {"paper_text": paper_text, "api_key": api_key, "review_scores": []}
+
+    state.update(paper_analyzer_agent(state));  print("✅ Paper Analyzer done")
+    state.update(summary_generator_agent(state)); print("✅ Summary Generator done")
+    state.update(citation_extractor_agent(state)); print("✅ Citation Extractor done")
+    state.update(key_insights_agent(state));     print("✅ Key Insights done")
+    state.update(review_agent(state, "analysis")); print("✅ Review Agent done")
+
+    print("\n===== FINAL STATE =====")
+    print(json.dumps({
+        "analysis":  state["analysis"],
+        "summary":   state["summary"],
+        "citations": state["citations"],
+        "insights":  state["insights"],
+        "review":    state["review_scores"],
+    }, indent=2))
