@@ -62,7 +62,7 @@ research_analyzer/
 
 ```bash
 git clone https://github.com/bhadauria-harish/AI_Research_paper_Summarizer.git
-cd research-paper-analyzer
+cd AI_Research_paper_Summarizer
 
 python -m venv venv
 venv\Scripts\activate        # Windows
